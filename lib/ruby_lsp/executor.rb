@@ -70,6 +70,7 @@ module RubyLsp
           uri,
           request.dig(:params, :textDocument, :text),
           request.dig(:params, :textDocument, :version),
+          request.dig(:params, :textDocument, :languageId),
         )
       when "textDocument/didClose"
         @message_queue << Notification.new(
@@ -296,9 +297,9 @@ module RubyLsp
       VOID
     end
 
-    sig { params(uri: URI::Generic, text: String, version: Integer).returns(Object) }
-    def text_document_did_open(uri, text, version)
-      @store.set(uri: uri, source: text, version: version)
+    sig { params(uri: URI::Generic, text: String, version: Integer, language_id: String).returns(Object) }
+    def text_document_did_open(uri, text, version, language_id)
+      @store.set(uri: uri, source: text, version: version, language_id: language_id)
       VOID
     end
 
@@ -343,7 +344,10 @@ module RubyLsp
       path = uri.to_standardized_path
       return unless path.nil? || path.start_with?(T.must(@store.workspace_uri.to_standardized_path))
 
-      Requests::Formatting.new(@store.get(uri), formatter: @store.formatter).perform
+      document = @store.get(uri)
+      return unless document.is_a?(RubyDocument)
+
+      Requests::Formatting.new(document, formatter: @store.formatter).perform
     end
 
     sig do
@@ -398,7 +402,7 @@ module RubyLsp
       return unless path.nil? || path.start_with?(T.must(@store.workspace_uri.to_standardized_path))
 
       response = @store.cache_fetch(uri, "textDocument/diagnostic") do |document|
-        Requests::Diagnostics.new(document).perform
+        Requests::Diagnostics.new(document).perform if document.is_a?(RubyDocument)
       end
 
       Interface::FullDocumentDiagnosticReport.new(kind: "full", items: response) if response

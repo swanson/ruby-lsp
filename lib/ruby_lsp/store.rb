@@ -57,9 +57,14 @@ module RubyLsp
       T.must(@state[uri.to_s])
     end
 
-    sig { params(uri: URI::Generic, source: String, version: Integer).void }
-    def set(uri:, source:, version:)
-      document = RubyDocument.new(source: source, version: version, uri: uri, encoding: @encoding)
+    sig { params(uri: URI::Generic, source: String, version: Integer, language_id: String).void }
+    def set(uri:, source:, version:, language_id: "ruby")
+      document = if language_id == "ruby"
+        RubyDocument.new(source: source, version: version, uri: uri, encoding: @encoding)
+      else
+        ERBDocument.new(source: source, version: version, uri: uri, encoding: @encoding)
+      end
+
       @state[uri.to_s] = document
     end
 
