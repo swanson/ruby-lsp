@@ -1243,9 +1243,9 @@ module RubyIndexer
       refute_nil(entry)
       assert_equal("@b", T.must(entry).name)
 
-      entry = @index.resolve_instance_variable("@c", "Foo::Bar::<Class:Bar>::<Class:<Class:Bar>>")&.first
+      entry = @index["@c"].first
       refute_nil(entry)
-      assert_equal("@c", T.must(entry).name)
+      assert_nil(T.must(entry).owner)
     end
 
     def test_instance_variable_completion_in_singleton_contexts
@@ -1268,10 +1268,93 @@ module RubyIndexer
       entries = @index.instance_variable_completion_candidates("@", "Foo::Bar::<Class:Bar>").map(&:name)
       assert_includes(entries, "@a")
       assert_includes(entries, "@b")
+    end
 
-      assert_includes(
-        @index.instance_variable_completion_candidates("@", "Foo::Bar::<Class:Bar>::<Class:<Class:Bar>>").map(&:name),
-        "@c",
+    def test_linearizing_singleton_ancestors
+      @index.index_single(IndexablePath.new(nil, "/fake/path/foo.rb"), <<~RUBY)
+        module First
+        end
+
+        module Second
+          include First
+        end
+
+        module Foo
+          class Bar
+            class << self
+              class Baz
+                extend Second
+
+                class << self
+                  include First
+                end
+              end
+            end
+          end
+        end
+      RUBY
+
+      assert_equal(
+        [
+          "Foo::Bar::<Class:Bar>::Baz::<Class:Baz>",
+          "Second",
+          "First",
+          "Object::<Class:Object>",
+          "BasicObject::<Class:BasicObject>",
+          "Class",
+          "Module",
+          "Object",
+          "Kernel",
+          "BasicObject",
+        ],
+        @index.linearized_ancestors_of("Foo::Bar::<Class:Bar>::Baz::<Class:Baz>"),
+      )
+    end
+
+    def test_linearizing_singleton_ancestors_when_class_has_parent
+      @index.index_single(IndexablePath.new(nil, "/fake/path/foo.rb"), <<~RUBY)
+        class Foo; end
+
+        class Bar < Foo
+        end
+
+        class Baz < Bar
+          class << self
+          end
+        end
+      RUBY
+
+      assert_equal(
+        [
+          "Baz::<Class:Baz>",
+          "Bar::<Class:Bar>",
+          "Foo::<Class:Foo>",
+          "Object::<Class:Object>",
+          "BasicObject::<Class:BasicObject>",
+          "Class",
+          "Module",
+          "Object",
+          "Kernel",
+          "BasicObject",
+        ],
+        @index.linearized_ancestors_of("Baz::<Class:Baz>"),
+      )
+    end
+
+    def test_linearizing_a_module_singleton_class
+      @index.index_single(IndexablePath.new(nil, "/fake/path/foo.rb"), <<~RUBY)
+        module A; end
+      RUBY
+
+      assert_equal(
+        [
+          "A::<Class:A>",
+          "Module",
+          "Object",
+          "Kernel",
+          "BasicObject",
+        ],
+        @index.linearized_ancestors_of("A::<Class:A>"),
       )
     end
   end

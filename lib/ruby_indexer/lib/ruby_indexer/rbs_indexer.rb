@@ -43,14 +43,29 @@ module RubyIndexer
 
     sig { params(declaration: RBS::AST::Declarations::Class, pathname: Pathname).void }
     def handle_class_declaration(declaration, pathname)
-      nesting = [declaration.name.name.to_s]
+      name = declaration.name.name.to_s
+      nesting = [name]
       file_path = pathname.to_s
       location = to_ruby_indexer_location(declaration.location)
       comments = Array(declaration.comment&.string)
-      parent_class = declaration.super_class&.name&.name&.to_s
+      parent_class = name == "BasicObject" ? nil : (declaration.super_class&.name&.name&.to_s || "::Object")
       class_entry = Entry::Class.new(nesting, file_path, location, comments, parent_class)
       add_declaration_mixins_to_entry(declaration, class_entry)
       @index << class_entry
+
+      @index << if name == "BasicObject"
+        # BasicObject's singleton class inherits from `Class`
+        Entry::SingletonClass.new(nesting + ["<Class:BasicObject>"], file_path, location, [], "Class")
+      else
+        Entry::SingletonClass.new(
+          nesting + ["<Class:#{nesting.last}>"],
+          file_path,
+          location,
+          [],
+          "#{parent_class}::<Class:#{parent_class.delete_prefix("::")}>",
+        )
+      end
+
       declaration.members.each do |member|
         next unless member.is_a?(RBS::AST::Members::MethodDefinition)
 
@@ -67,6 +82,15 @@ module RubyIndexer
       module_entry = Entry::Module.new(nesting, file_path, location, comments)
       add_declaration_mixins_to_entry(declaration, module_entry)
       @index << module_entry
+
+      @index << Entry::SingletonClass.new(
+        nesting + ["<Class:#{nesting.last}>"],
+        file_path,
+        location,
+        [],
+        "::Module",
+      )
+
       declaration.members.each do |member|
         next unless member.is_a?(RBS::AST::Members::MethodDefinition)
 
@@ -93,16 +117,17 @@ module RubyIndexer
     def add_declaration_mixins_to_entry(declaration, entry)
       declaration.each_mixin do |mixin|
         name = mixin.name.name.to_s
-        mixin_operation =
-          case mixin
-          when RBS::AST::Members::Include
-            Entry::Include.new(name)
-          when RBS::AST::Members::Extend
-            Entry::Extend.new(name)
-          when RBS::AST::Members::Prepend
-            Entry::Prepend.new(name)
-          end
-        entry.mixin_operations << mixin_operation if mixin_operation
+
+        case mixin
+        when RBS::AST::Members::Include
+          entry.mixin_operations << Entry::Include.new(name)
+        when RBS::AST::Members::Prepend
+          entry.mixin_operations << Entry::Prepend.new(name)
+        when RBS::AST::Members::Extend
+          last_part = entry.name.split("::").last
+          singleton = T.cast(@index["#{entry.name}::<Class:#{last_part}>"], T.nilable(T::Array[Entry::SingletonClass]))
+          T.must(singleton.first).mixin_operations << Entry::Include.new(name) if singleton
+        end
       end
     end
 

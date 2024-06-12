@@ -159,9 +159,7 @@ module RubyIndexer
       assert_entry("@c", Entry::InstanceVariable, "/fake/path/foo.rb:9-6:9-8")
 
       entry = T.must(@index["@c"]&.first)
-      owner = T.must(entry.owner)
-      assert_instance_of(Entry::SingletonClass, owner)
-      assert_equal("Foo::Bar::<Class:Bar>::<Class:<Class:Bar>>", owner.name)
+      assert_nil(entry.owner)
     end
 
     def test_top_level_instance_variables

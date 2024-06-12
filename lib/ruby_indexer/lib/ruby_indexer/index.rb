@@ -102,6 +102,7 @@ module RubyIndexer
       unless nesting
         results = @entries_tree.search(query)
         results.uniq!
+        results.reject! { |entries| entries.first.is_a?(Entry::SingletonClass) }
         return results
       end
 
@@ -112,20 +113,28 @@ module RubyIndexer
       end
 
       results.uniq!
+      results.reject! { |entries| entries.first.is_a?(Entry::SingletonClass) }
       results
     end
 
     # Fuzzy searches index entries based on Jaro-Winkler similarity. If no query is provided, all entries are returned
     sig { params(query: T.nilable(String)).returns(T::Array[Entry]) }
     def fuzzy_search(query)
-      return @entries.flat_map { |_name, entries| entries } unless query
+      unless query
+        entries = @entries.flat_map { |_name, entries| entries }
+        entries.reject! { |e| e.is_a?(Entry::SingletonClass) }
+        return entries
+      end
 
       normalized_query = query.gsub("::", "").downcase
 
       results = @entries.filter_map do |name, entries|
+        next if entries.first.is_a?(Entry::SingletonClass)
+
         similarity = DidYouMean::JaroWinkler.distance(name.gsub("::", "").downcase, normalized_query)
         [entries, -similarity] if similarity > ENTRY_SIMILARITY_THRESHOLD
       end
+
       results.sort_by!(&:last)
       results.flat_map(&:first)
     end

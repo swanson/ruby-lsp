@@ -74,13 +74,14 @@ module RubyIndexer
       end
 
       nesting = name.start_with?("::") ? [name.delete_prefix("::")] : @stack + [name.delete_prefix("::")]
+      entry = Entry::Class.new(nesting, @file_path, node.location, comments, parent_class)
 
-      entry = Entry::Class.new(
-        nesting,
+      @index << Entry::SingletonClass.new(
+        nesting + ["<Class:#{nesting.last}>"],
         @file_path,
         node.location,
-        comments,
-        parent_class,
+        [],
+        "#{parent_class}::<Class:#{parent_class.delete_prefix("::")}>",
       )
 
       @owner_stack << entry
@@ -104,6 +105,14 @@ module RubyIndexer
 
       nesting = name.start_with?("::") ? [name.delete_prefix("::")] : @stack + [name.delete_prefix("::")]
       entry = Entry::Module.new(nesting, @file_path, node.location, comments)
+
+      @index << Entry::SingletonClass.new(
+        nesting + ["<Class:#{nesting.last}>"],
+        @file_path,
+        node.location,
+        [],
+        "::Module",
+      )
 
       @owner_stack << entry
       @index << entry
@@ -556,7 +565,8 @@ module RubyIndexer
         when :prepend
           owner.mixin_operations << Entry::Prepend.new(node.full_name)
         when :extend
-          owner.mixin_operations << Entry::Extend.new(node.full_name)
+          singleton = singleton_klass
+          singleton.mixin_operations << Entry::Include.new(node.full_name) if singleton
         end
       rescue Prism::ConstantPathNode::DynamicPartsInConstantPathError,
              Prism::ConstantPathNode::MissingNodesInConstantPathError
@@ -571,21 +581,11 @@ module RubyIndexer
 
     sig { returns(T.nilable(Entry::Class)) }
     def singleton_klass
-      attached_class = @owner_stack.last
-      return unless attached_class
-
-      # Return the existing singleton class if available
       owner = T.cast(
-        @index["#{attached_class.name}::<Class:#{attached_class.name}>"],
+        @index[(@stack + ["<Class:#{@stack.last}>"]).join("::")],
         T.nilable(T::Array[Entry::SingletonClass]),
       )
-      return owner.first if owner
-
-      # If not available, create the singleton class lazily
-      nesting = @stack + ["<Class:#{@stack.last}>"]
-      entry = Entry::SingletonClass.new(nesting, @file_path, attached_class.location, [], nil)
-      @index << entry
-      entry
+      owner&.first
     end
   end
 end
