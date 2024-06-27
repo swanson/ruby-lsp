@@ -26,6 +26,21 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "chatParticipants": [
+      {
+        "id": "rubyLsp.chatAgent",
+        "fullName": "Ruby",
+        "name": "ruby",
+        "description": "How can I help with your Ruby application?",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "design",
+            "description": "Explain what you're trying to build and I will suggest possible ways to model the domain"
+          }
+        ]
+      }
+    ],
     "menus": {
       "editor/context": [
         {
@@ -564,7 +579,7 @@
     "@types/mocha": "^10.0.6",
     "@types/node": "20.x",
     "@types/sinon": "^17.0.3",
-    "@types/vscode": "^1.68.0",
+    "@types/vscode": "^1.90.0",
     "@typescript-eslint/eslint-plugin": "^7.13.0",
     "@typescript-eslint/parser": "^7.13.0",
     "@vscode/test-electron": "^2.4.0",

@@ -263,6 +263,14 @@ export class Workspace implements WorkspaceInterface {
     return this.#rebaseInProgress;
   }
 
+  // Run a shell command in this workspace with its Ruby environment
+  async runInWorkspace(command: string) {
+    return asyncExec(command, {
+      env: this.ruby.env,
+      cwd: this.workspaceFolder.uri.fsPath,
+    });
+  }
+
   private registerRestarts(context: vscode.ExtensionContext) {
     this.createRestartWatcher(context, "Gemfile.lock");
     this.createRestartWatcher(context, "gems.locked");

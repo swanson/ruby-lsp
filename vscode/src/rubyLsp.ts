@@ -10,6 +10,7 @@ import { StatusItems } from "./status";
 import { TestController } from "./testController";
 import { Debugger } from "./debugger";
 import { DependenciesTree } from "./dependenciesTree";
+import { ChatAgent } from "./chatAgent";
 
 // The RubyLsp class represents an instance of the entire extension. This should only be instantiated once at the
 // activation event. One instance of this class controls all of the existing workspaces, telemetry and handles all
@@ -35,7 +36,12 @@ export class RubyLsp {
 
     this.statusItems = new StatusItems();
     const dependenciesTree = new DependenciesTree();
-    context.subscriptions.push(this.statusItems, this.debug, dependenciesTree);
+    context.subscriptions.push(
+      this.statusItems,
+      this.debug,
+      dependenciesTree,
+      new ChatAgent(context, this.showWorkspacePick.bind(this)),
+    );
 
     // Switch the status items based on which workspace is currently active
     vscode.window.onDidChangeActiveTextEditor((editor) => {
@@ -369,6 +375,72 @@ export class RubyLsp {
       vscode.commands.registerCommand(
         Command.DebugTest,
         this.testController.debugTest.bind(this.testController),
+      ),
+      vscode.commands.registerCommand(
+        Command.RailsGenerate,
+        async (commands: string[]) => {
+          const workspace = await this.showWorkspacePick();
+
+          if (!workspace) {
+            return;
+          }
+
+          const correctedCommands = commands.map((command) =>
+            command.replace("rails", "bundle exec rails"),
+          );
+
+          const createdFiles: string[] = [];
+          const deletedFiles: string[] = [];
+
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: "Running Rails generator",
+            },
+            async (progress) => {
+              for (const command of correctedCommands) {
+                progress.report({ message: `Running ${command}` });
+                const { stdout } = await workspace.runInWorkspace(command);
+
+                stdout.split("\n").forEach((line) => {
+                  const match = /(create|remove)\s*(.*)/.exec(line);
+
+                  if (match) {
+                    if (match[0].startsWith("create")) {
+                      createdFiles.push(match[2]);
+                    } else if (match[0].startsWith("remove")) {
+                      deletedFiles.push(match[2]);
+                    }
+                  }
+                });
+              }
+            },
+          );
+
+          for (const file of createdFiles) {
+            const uri = vscode.Uri.joinPath(
+              workspace.workspaceFolder.uri,
+              file,
+            );
+
+            await vscode.window.showTextDocument(uri, { preview: false });
+            await vscode.commands.executeCommand(
+              "editor.action.formatDocument",
+              uri,
+            );
+            await vscode.commands.executeCommand(
+              "workbench.action.files.save",
+              uri,
+            );
+          }
+
+          for (const file of deletedFiles) {
+            await vscode.commands.executeCommand(
+              "workbench.action.closeActiveEditor",
+              vscode.Uri.joinPath(workspace.workspaceFolder.uri, file),
+            );
+          }
+        },
       ),
     );
   }
