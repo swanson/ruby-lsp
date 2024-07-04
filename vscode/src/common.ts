@@ -21,6 +21,7 @@ export enum Command {
   DisplayAddons = "rubyLsp.displayAddons",
   RunTask = "rubyLsp.runTask",
   BundleInstall = "rubyLsp.bundleInstall",
+  FileOperation = "rubyLsp.fileOperation",
   RailsGenerate = "rubyLsp.railsGenerate",
   RailsDestroy = "rubyLsp.railsDestroy",
 }
